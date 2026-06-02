@@ -1,0 +1,10 @@
+research_output/**
+!research_output/.gitkeep
+!research_output/*/
+research_output/*/**
+!research_output/*/.gitkeep
+.claude/settings.local.json
+.env
+*.pyc
+__pycache__/
+*.DS_Store

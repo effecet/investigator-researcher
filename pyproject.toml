@@ -1,0 +1,20 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = ["research_output", ".forgejo"]
+
+[tool.ruff.lint]
+# Rule families:
+#   E,W = pycodestyle errors + warnings
+#   F   = pyflakes (unused imports, undefined names)
+#   I   = isort (import order)
+#   B   = flake8-bugbear (likely-buggy patterns)
+#   UP  = pyupgrade (modern python idioms)
+select = ["E", "W", "F", "I", "B", "UP"]
+
+# Skill lives in markdown, not python — only test code is linted today.
+# Add ignores here if/when application code grows.
+ignore = []
+
+[tool.ruff.format]
+quote-style = "double"
