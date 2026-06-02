@@ -47,9 +47,7 @@ flowchart TD
 ## Project Structure
 
 ```
-researcher-investigator/
-├── CLAUDE.md                       # Project instructions for Claude Code
-├── CHANGELOG.md                    # Version history
+investigator-researcher/
 ├── README.md
 ├── Makefile                        # install / test / lint / format targets
 ├── pyproject.toml                  # ruff config (lint + format)
@@ -174,8 +172,7 @@ gitleaks secret sweep (`.github/workflows/gitleaks-sweep.yml`).
 
 The template in `skill/templates/readme_template.md` defines the base
 document structure. Phase-by-phase maintenance notes live in
-[`docs/PIPELINE.md`](docs/PIPELINE.md). Version history is in
-[`CHANGELOG.md`](CHANGELOG.md).
+[`docs/PIPELINE.md`](docs/PIPELINE.md).
 
 ## License
 
