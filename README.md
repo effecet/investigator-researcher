@@ -54,7 +54,7 @@ investigator-researcher/
 ├── requirements-dev.txt            # pyyaml + pytest
 ├── .github/workflows/              # CI: ruff + pytest, plus gitleaks sweep
 ├── skill/
-│   ├── SKILL.md                    # Skill definition (v2.2 — full pipeline logic)
+│   ├── SKILL.md                    # Skill definition (v2.3 — full pipeline logic)
 │   └── templates/
 │       └── readme_template.md      # Output document template
 ├── tests/
@@ -121,7 +121,7 @@ Just ask Claude to research something:
 | `citation_style` | APA / MLA / IEEE | APA | Reference formatting style |
 | `verification_mode` | normal / strict | strict | strict verifies all URLs; normal samples 3-5 |
 | `figure_density` | auto / high | auto | auto = figures where data warrants; high = every quantitative claim |
-| `export` | md / html / pdf / both / all | md | md = markdown only; html = md + styled HTML; pdf = **PDF only** (intermediate `.md` is deleted after conversion); both = md + html; all = md + html + pdf |
+| `export` | md / html / pdf / both / all | md | md = markdown only; html = md + styled HTML; pdf = **PDF only** (the `.md` is kept as the working source until the session ends or the document is final, then deleted); both = md + html; all = md + html + pdf |
 
 ## How it works
 

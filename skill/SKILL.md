@@ -4,7 +4,7 @@ description: >
   Deep research on any topic with verified citations and structured output.
   Invoke via /research or automatically when the user asks to "research",
   "investigate", "find sources on", or "do a literature review" on a topic.
-version: 2.2.0
+version: 2.3.0
 inputs:
   topic:
     type: string
@@ -51,7 +51,7 @@ inputs:
     type: string
     allowed: [md, html, pdf, both, all]
     default: md
-    description: "md = markdown only; html = markdown + styled HTML; pdf = PDF only (intermediate .md is deleted after conversion); both = markdown + HTML; all = markdown + HTML + PDF"
+    description: "md = markdown only; html = markdown + styled HTML; pdf = PDF only (the .md is kept as the working source until the session ends or the document is final, then deleted); both = markdown + HTML; all = markdown + HTML + PDF"
 ---
 
 # Researcher Investigator
@@ -311,6 +311,22 @@ Track consecutive WebFetch failures (403, 404, timeout, cancelled). Apply these 
   - If below the minimum, try 2 more fetches on different domains before stopping.
 - **5 cumulative errors** (non-consecutive): stop all further fetching regardless of source count. Use search result snippets to supplement extracted content.
 
+### Known-blocked domains and their substitutes
+
+These hosts return **HTTP 403 to all automated fetching** — WebFetch *and* `curl` with a full browser User-Agent. They are hard blocks, not User-Agent sniffing. Do **not** spend error budget retrying them with different headers; go straight to the substitute.
+
+| Blocked host | What it was wanted for | Substitute (use this instead) |
+|---|---|---|
+| `ods.od.nih.gov` (NIH Office of Dietary Supplements) | RDAs, Tolerable Upper Intake Levels, nutrient drug interactions | **`lpi.oregonstate.edu/mic/`** — Linus Pauling Institute Micronutrient Information Center (Oregon State University). Cites the same Food and Nutrition Board values, and fetches cleanly. |
+| `mdpi.com` article pages | Open-access review full text | The PMC mirror via PubMed `get_full_text_article` (most MDPI journals — *Nutrients*, *Biomolecules* — are PMC-deposited) |
+| `sciencedirect.com`, `onlinelibrary.wiley.com`, `link.springer.com` | Paywalled primary articles | PubMed abstract via `get_article_metadata`; PMC full text if a PMCID exists |
+
+**Substituting for professional guidance.** When a government consumer-guidance page is unreachable, professional-society **position stands** indexed in PubMed carry comparable authority and *are* retrievable — e.g. the ISSN position stand on creatine (PMID 28615996) supplies dosing protocols and safety ceilings, and the WFSBP/CANMAT nutraceutical taskforce (PMID 35311615) supplies clinical recommendation grades.
+
+**Never backfill a blocked number from training data.** If a specific value (a UL, an RDA, a dosing ceiling) cannot be retrieved from any source, **omit the number and say so in the methodology**. Critical Rule 1 (no fabrication) covers numeric limits, not just DOIs — a plausible-looking dose figure with no retrievable source is the highest-harm fabrication this skill can produce.
+
+**Record the consequence.** When a blocked host costs the document a whole source *category*, say so explicitly in the "How This Research Was Done" section and in the source-diversity metric, rather than letting the diversity number silently degrade.
+
 ### URL Selection to Minimize Errors
 - **Prefer open-access URLs**: PMC (pmc.ncbi.nlm.nih.gov), PubMed abstracts, Frontiers, PLOS, government sites (.gov), university sites (.edu)
 - **Avoid paywalled URLs**: Elsevier (sciencedirect.com), Wiley (onlinelibrary.wiley.com), Springer (link.springer.com) frequently return 403. Use these only if no open-access alternative exists.
@@ -350,7 +366,30 @@ When context is getting heavy (many long extractions already completed), prefer 
 
 ### MCP Server Availability and Fallback
 
-If the selected domain profile includes **MCP sources**, probe each configured MCP server at the start of Phase 1a with a minimal call:
+#### Step 0 — Pre-load deferred tool schemas (MANDATORY, before any probe)
+
+The Claude harness lists MCP tools by name in a `<system-reminder>` but does **not** load their JSONSchema. Calling a deferred tool directly fails with `InputValidationError` or a misleading type-coercion error **even when the parameters are correct** — sending you into a parameter-debugging rabbit hole on what is actually a "schema not loaded" problem.
+
+Before probing, batch-load the schemas for the domain's MCP tools in a single `ToolSearch` call:
+
+```
+# medicine
+ToolSearch(query="select:mcp__claude_ai_PubMed__search_articles,mcp__claude_ai_PubMed__get_article_metadata,mcp__claude_ai_PubMed__get_full_text_article,mcp__claude_ai_PubMed__find_related_articles,mcp__claude_ai_PubMed__convert_article_ids,mcp__claude_ai_PubMed__get_copyright_status,mcp__claude_ai_PubMed__lookup_article_by_citation,WebSearch,WebFetch", max_results=15)
+
+# technology
+ToolSearch(query="select:mcp__claude_ai_Hugging_Face__paper_search,mcp__claude_ai_Hugging_Face__hub_repo_search,mcp__claude_ai_Hugging_Face__hub_repo_details,mcp__claude_ai_Context7__resolve-library-id,mcp__claude_ai_Context7__query-docs,WebSearch,WebFetch", max_results=10)
+
+# history / social-sciences / general (web-only domains still need these)
+ToolSearch(query="select:WebSearch,WebFetch", max_results=5)
+```
+
+Use the tool names the session actually lists: a locally installed server can carry a different prefix (e.g. `mcp__context7__*` instead of `mcp__claude_ai_Context7__*`), and `select:` silently loads nothing for a name that does not exist. Schemas persist for the rest of the session. Skip only if already loaded this session.
+
+**If a server requires authentication** (the system-reminder lists it under "require authentication"), it cannot be used and the OAuth flow cannot be run from a non-interactive session. Tell the user which server needs authorizing and where (claude.ai connector settings for claude.ai connectors; `claude mcp` or `/mcp` otherwise), state that the pipeline will run on the web fallback, and proceed — do not block, and never ask the user for tokens or callback URLs.
+
+#### Step 1 — Probe
+
+Then probe each configured MCP server with a minimal call:
 - **PubMed:** `search_articles` with `query="test"`, `max_results=1`
 - **Hugging Face:** `paper_search` with `query="test"`, `results_limit=1`
 - **Context7:** `resolve-library-id` with a common library name (e.g., "react")
@@ -375,7 +414,7 @@ If a probe **fails** (timeout, error, tool not found):
 - If an MCP extraction call fails, the source is demoted to abstract-only (not dropped entirely)
 - All MCP errors are logged in the fetch audit log with `channel: mcp:{server}`
 
-If the profile has **no MCP sources** (history, social-sciences, general), skip this section entirely — proceed directly to Phase 1b (web discovery).
+If the profile has **no MCP sources** (history, social-sciences, general), run only the web-only preload from Step 0, then skip the rest of this section — proceed directly to Phase 1b (web discovery).
 
 ---
 
@@ -1314,7 +1353,16 @@ Before saving the document, run these verification checks on the generated conte
      ```
    - The output PDF is saved automatically as `./research_output/{domain_subfolder}/{actual_filename}.pdf` (md-to-pdf saves alongside the source by default, replacing the `.md` extension with `.pdf`)
    - If a date-suffixed filename was chosen in step 2, the same suffix carries through (e.g., `{slug}-2026-03-10.md` → `{slug}-2026-03-10.pdf`)
-   - **PDF-only mode (`export: pdf`):** after a successful conversion, delete the intermediate `.md` file. The user requested PDF only — keeping the markdown defeats the purpose. Apply ONLY when `export == pdf`; for `export: all` or `both`, keep all artifacts. If the PDF conversion fails, do NOT delete the markdown.
+   - **PDF-only mode (`export: pdf`) — DEFERRED cleanup, not immediate.** The user wants a PDF as the *delivered artifact*, but the `.md` is the only editable source: PDFs cannot be patched, and `pdftotext`/`qpdf`/`pypdf` are frequently absent, so deleting the markdown immediately means any follow-up revision costs a full regeneration of the entire document from context.
+
+     Therefore:
+     1. After a successful conversion, **keep the `.md` for the remainder of the session** as the working source. Do not announce it as a deliverable — the PDF is the deliverable.
+     2. On **any** in-session revision (user asks to add a section, fill a gap, correct a figure): edit the retained `.md`, re-run `md-to-pdf`, and keep the `.md` again. Never reconstruct the document from conversation context when the source file exists.
+     3. **Delete the `.md` only at the end of the session**, or immediately when the user signals the document is final ("that's it", "done", "ship it"). State the deletion in one line so the user knows the source is gone.
+     4. If the PDF conversion fails at any point, do NOT delete the markdown.
+     5. Apply this whole flow ONLY when `export == pdf`; for `export: all` or `both`, keep all artifacts permanently.
+
+     Rationale: the user's preference is "PDF only" as an *output* preference, not a demand that the working file be destroyed mid-task. Immediate deletion satisfies the letter of the preference while making the next request expensive.
    - **Shell safety:** Only the sanitized slug (post-whitelist `[a-z0-9-]`, post-path-traversal-guard) appears in the file path. The topic string is never interpolated into the shell command.
    - **Prerequisite:** `md-to-pdf` must be installed globally (`npm install -g md-to-pdf`). Do NOT use `npx` — it causes npm cache permission errors and adds download overhead on every invocation.
 7. Present completion summary:

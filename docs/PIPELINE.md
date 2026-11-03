@@ -115,7 +115,8 @@ Topic slugified per the algorithm tested in
 `tests/test_skill_spec.py::TestSlugify`. Saved to
 `./research_output/{domain}/{slug}.md` with duplicate detection. Optional
 HTML export via inline-CSS template. Optional PDF export via globally
-installed `md-to-pdf`. **`export: pdf` is PDF-only** — the intermediate
-`.md` is deleted after successful conversion. Completion summary
+installed `md-to-pdf`. **`export: pdf` is PDF-only** — the `.md` is kept
+as the working source until the session ends or the document is final,
+then deleted. Completion summary
 includes the full audit: counts per track, diversity, funding profile,
 echo flags, evidence tiers.
